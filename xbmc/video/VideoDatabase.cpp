@@ -6191,6 +6191,7 @@ bool CVideoDatabase::GetMoviesByWhere(const CStdString& strBaseDir, const Filter
       return false;
 
     // get data from returned rows
+	  CStdString idlist;
     items.Reserve(results.size());
     const query_data &data = m_pDS->get_result_set().records;
     for (DatabaseResults::const_iterator it = results.begin(); it != results.end(); it++)
@@ -6205,6 +6206,8 @@ bool CVideoDatabase::GetMoviesByWhere(const CStdString& strBaseDir, const Filter
       {
         CFileItemPtr pItem(new CFileItem(movie));
 
+		    idlist += StringUtils::Format("%d,", record->at(0).get_asInt());
+
         CVideoDbUrl itemUrl = videoUrl;
         CStdString path = StringUtils::Format("%ld", movie.m_iDbId);
         itemUrl.AppendPath(path);
@@ -6214,6 +6217,12 @@ bool CVideoDatabase::GetMoviesByWhere(const CStdString& strBaseDir, const Filter
         items.Add(pItem);
       }
     }
+
+	  if (idlist.size() > 0)
+	  {
+	    idlist.resize(idlist.size()-1);
+      FillArt(idlist, "movie", items);
+	  }
 
     // cleanup
     m_pDS->close();
@@ -6296,6 +6305,7 @@ bool CVideoDatabase::GetTvShowsByWhere(const CStdString& strBaseDir, const Filte
       return false;
 
     // get data from returned rows
+	  CStdString idlist;
     items.Reserve(results.size());
     const query_data &data = m_pDS->get_result_set().records;
     for (DatabaseResults::const_iterator it = results.begin(); it != results.end(); it++)
@@ -6312,6 +6322,8 @@ bool CVideoDatabase::GetTvShowsByWhere(const CStdString& strBaseDir, const Filte
       {
         pItem->SetFromVideoInfoTag(movie);
 
+		    idlist += StringUtils::Format("%d,", record->at(0).get_asInt());
+
         CVideoDbUrl itemUrl = videoUrl;
         CStdString path = StringUtils::Format("%ld/", record->at(0).get_asInt());
         itemUrl.AppendPath(path);
@@ -6321,6 +6333,12 @@ bool CVideoDatabase::GetTvShowsByWhere(const CStdString& strBaseDir, const Filte
         items.Add(pItem);
       }
     }
+
+    if (idlist.size() > 0)
+	  {
+	    idlist.resize(idlist.size()-1);
+      FillArt(idlist, "tvshow", items);
+	  }
 
     Stack(items, VIDEODB_CONTENT_TVSHOWS, !filter.order.empty() || sorting.sortBy != SortByNone);
 
@@ -6611,6 +6629,7 @@ bool CVideoDatabase::GetEpisodesByWhere(const CStdString& strBaseDir, const Filt
     items.Reserve(results.size());
     CLabelFormatter formatter("%H. %T", "");
 
+	  CStdString idlist;
     const query_data &data = m_pDS->get_result_set().records;
     for (DatabaseResults::const_iterator it = results.begin(); it != results.end(); it++)
     {
@@ -6626,6 +6645,7 @@ bool CVideoDatabase::GetEpisodesByWhere(const CStdString& strBaseDir, const Filt
         formatter.FormatLabel(pItem.get());
       
         int idEpisode = record->at(0).get_asInt();
+		    idlist += StringUtils::Format("%d,", idEpisode);
 
         CVideoDbUrl itemUrl = videoUrl;
         CStdString path;
@@ -6642,6 +6662,12 @@ bool CVideoDatabase::GetEpisodesByWhere(const CStdString& strBaseDir, const Filt
         items.Add(pItem);
       }
     }
+
+	  if (idlist.size() > 0)
+	  {
+	    idlist.resize(idlist.size()-1);
+      FillArt(idlist, "episode", items);
+	  }
 
     // cleanup
     m_pDS->close();
@@ -7462,6 +7488,7 @@ bool CVideoDatabase::GetMusicVideosByWhere(const CStdString &baseDir, const Filt
     // get data from returned rows
     items.Reserve(results.size());
     // get songs from returned subtable
+	  CStdString idlist;
     const query_data &data = m_pDS->get_result_set().records;
     for (DatabaseResults::const_iterator it = results.begin(); it != results.end(); it++)
     {
@@ -7474,6 +7501,8 @@ bool CVideoDatabase::GetMusicVideosByWhere(const CStdString &baseDir, const Filt
       {
         CFileItemPtr item(new CFileItem(musicvideo));
 
+		    idlist += StringUtils::Format("%d,", record->at(0).get_asInt());
+
         CVideoDbUrl itemUrl = videoUrl;
         CStdString path = StringUtils::Format("%ld", record->at(0).get_asInt());
         itemUrl.AppendPath(path);
@@ -7483,6 +7512,12 @@ bool CVideoDatabase::GetMusicVideosByWhere(const CStdString &baseDir, const Filt
         items.Add(item);
       }
     }
+
+	  if (idlist.size() > 0)
+	  {
+	    idlist.resize(idlist.size()-1);
+      FillArt(idlist, "musicvideo", items);
+	  }
 
     // cleanup
     m_pDS->close();
@@ -9959,3 +9994,24 @@ bool CVideoDatabase::GetFilter(CDbUrl &videoUrl, Filter &filter, SortDescription
 
   return true;
 }
+
+void CVideoDatabase::FillArt(const CStdString& idlist, const CStdString& type, CFileItemList& items)
+{
+  map<int, map<string, string> > artworks;
+	CStdString sql = PrepareSQL("SELECT media_id,type,url FROM art WHERE media_id IN (%s) AND media_type='%s'", idlist.c_str(), type.c_str());
+	m_pDS2->query(sql.c_str());
+	while (!m_pDS2->eof())
+	{
+    artworks[m_pDS2->fv(0).get_asInt()].insert(make_pair(m_pDS2->fv(1).get_asString(), m_pDS2->fv(2).get_asString()));
+		m_pDS2->next();
+	}
+	m_pDS2->close();
+
+  for (int i=0; i<items.Size(); i++)
+  {
+    CFileItemPtr pItem = items.Get(i);
+    if (pItem->GetArt().empty())
+      CVideoThumbLoader::SetArt(*pItem, artworks[pItem->GetVideoInfoTag()->m_iDbId]);
+  }
+}
+
